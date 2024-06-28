@@ -4,6 +4,7 @@ using System.IO;
 using System.Management.Automation;
 using System.Reflection;
 using System.Web;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Send_MailKitMessage
 {
@@ -89,6 +90,18 @@ namespace Send_MailKitMessage
             Mandatory = false)]
         public string[] AttachmentList { get; set; }
 
+        [Parameter(
+            Mandatory = false)]
+        public SwitchParameter DisableCertificateRevocation { get; set; } = SwitchParameter.Present;  //default to present if no value is passed
+
+        [Parameter(
+            Mandatory = false)]
+        public SwitchParameter ServerCertificateValidationCallback { get; set; } = SwitchParameter.Present;  //default to present if no value is passed
+
+        [Parameter(
+            Mandatory = false)]
+        public X509Certificate2[] ClientCertificates { get; set; }
+
         // This method gets called once for each cmdlet in the pipeline when the pipeline starts executing
         protected override void BeginProcessing()
         {
@@ -154,12 +167,43 @@ namespace Send_MailKitMessage
                 //add bodybuilder to body
                 Message.Body = Body.ToMessageBody();
 
-                //smtp send
+                // disable CheckCertificateRevocation
+                // Occasional downtimes, network issues, or offline servers can make it impossible to check the revocation status of certificates.
+                if (DisableCertificateRevocation.IsPresent)
+                {
+                    Client.CheckCertificateRevocation = false;
+                }
+
+                // Accept all certificates regardless of errors (not recommended in production, good for debug.)
+                if (ServerCertificateValidationCallback.IsPresent)
+                {
+                    Client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+                }
+
+                // To authenticate the client to the server using a certificate
+                if (ClientCertificates != null && ClientCertificates.Length > 0)
+                {
+                    foreach (var cert in ClientCertificates)
+                    {
+                        if (!cert.HasPrivateKey)
+                        {
+                            throw new InvalidOperationException($"Certificate with thumbprint {cert.Thumbprint} does not have a private key.");
+                        }
+
+                        Client.ClientCertificates.Add(cert);
+                    }
+                }
+
+                // smtp Connect
                 Client.Connect(SMTPServer, Port, (UseSecureConnectionIfAvailable.IsPresent ? MailKit.Security.SecureSocketOptions.Auto : MailKit.Security.SecureSocketOptions.None));
+
+                // use smtp Authentication
                 if (Credential != null)
                 {
                     Client.Authenticate(Credential.UserName, (System.Runtime.InteropServices.Marshal.PtrToStringAuto(System.Runtime.InteropServices.Marshal.SecureStringToBSTR(Credential.Password))));
                 }
+
+                // smtp send message
                 Client.Send(Message);
 
             }
