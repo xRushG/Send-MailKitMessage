@@ -65,19 +65,19 @@ $SMTPServer = "SMTPServer";
 $Port = PortNumber;
 
 #sender ([MimeKit.MailboxAddress] http://www.mimekit.net/docs/html/T_MimeKit_MailboxAddress.htm, required)
-$From = [MimeKit.MailboxAddress]"SenderEmailAddress";
+[string] $From = "SenderEmailAddress";
 
 #recipient list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, required)
-$RecipientList = [MimeKit.InternetAddressList]::new();
-$RecipientList.Add([MimeKit.InternetAddress]"Recipient1EmailAddress");
+[string] $RecipientList = "RecipientEmailAddress"
+# [string[]] $RecipientList= @("Recipient1EmailAddress", "Recipient2EmailAddress"...)
 
 #cc list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, optional)
-$CCList = [MimeKit.InternetAddressList]::new();
-$CCList.Add([MimeKit.InternetAddress]"CCRecipient1EmailAddress");
+[string] $CCList = "CCRecipientEmailAddress"
+# [string[]] $CCList= @("CCRecipient1EmailAddress", "CCRecipient2EmailAddress"...)
 
 #bcc list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, optional)
-$BCCList = [MimeKit.InternetAddressList]::new();
-$BCCList.Add([MimeKit.InternetAddress]"BCCRecipient1EmailAddress");
+[string] $BCCList = "BCCRecipientEmailAddress"
+# [string[]] $BCCList= @("BCCRecipient1EmailAddress", "BCCRecipient2EmailAddress"...)
 
 #subject ([string], optional)
 $Subject = [string]"Subject";
@@ -91,6 +91,15 @@ $HTMLBody = [string]"HTMLBody";
 #attachment list ([System.Collections.Generic.List[string]], optional)
 $AttachmentList = [System.Collections.Generic.List[string]]::new();
 $AttachmentList.Add("Attachment1FilePath");
+
+#Disable Certificate Revocation if available ([switch], optional)
+$DisableCertificateRevocation = $true
+
+#Disable Server Certificate Validation Callback ([switch], optional)
+$ServerCertificateValidationCallback = $true
+
+#What If to simulates the operation without actually performing any actions ([switch], optional)
+$WhatIf = $true
 
 #splat parameters
 $Parameters = @{
