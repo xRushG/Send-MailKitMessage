@@ -92,11 +92,11 @@ namespace Send_MailKitMessage
 
         [Parameter(
             Mandatory = false)]
-        public SwitchParameter DisableCertificateRevocation { get; set; } = SwitchParameter.Present;  //default to present if no value is passed
+        public SwitchParameter DisableCertificateRevocation { get; set; }
 
         [Parameter(
             Mandatory = false)]
-        public SwitchParameter ServerCertificateValidationCallback { get; set; } = SwitchParameter.Present;  //default to present if no value is passed
+        public SwitchParameter ServerCertificateValidationCallback { get; set; }
 
         [Parameter(
             Mandatory = false)]
