@@ -154,6 +154,32 @@ Send-MailKitMessage @Parameters;
 
 # <a id="releases" />Releases
 
+### Fork Update: 16 Mai 2026 (3.2.1)
+Added Send-PSMailMessage alias to provide a familiar alternative to the legacy Send-MailMessage function
+
+Align parameters with legacy Send-MailMessage behavior:
+- From, To, CC, BCC, ReplyTo now accept [string] / [string[]] instead of MimeKit types
+- Added aliases: To -> ToList, RecipientList; CC -> CCList, CarbonCopyList; BCC -> BCCList, BlindCarbonCopyList
+- Added new parameters: ReplyTo, ClientCertificates, SigningAlgorithm, WhatIf, SignMail, SMimeCertificate
+- UseSSL now defaults to enabled; aliases: UseSSLIfAvailable, UseSecureConnectionIfAvailable
+
+Bug fixes:
+- Fix BSTR memory leak: SecureStringToBSTR is now properly freed with ZeroFreeBSTR
+- Remove empty catch { throw } block (dead code)
+- Set SmtpClient = null after Dispose() so EndProcessing null-check works correctly
+- Weak S/MIME digest algorithms (MD5, SHA-1, RIPEMD-160) are automatically upgraded to SHA-256
+
+Build / tooling:
+- Add PostBuildEvent.ps1: copies build output and module manifest to Module/ folder
+- Add Module/ to .gitignore
+- Upgrade MailKit and MimeKit to 4.16.0
+- Target framework updated to net9.0
+
+Example & docs:
+- Fix broken PowerShell line continuation syntax in Example-Send-MailKitMessage.ps1
+- Update README: replace deprecated MimeKit types with plain strings, document all
+  current parameters with types and aliases
+
 ### 3.2.0
 
 - Add support for Windows PowerShell
