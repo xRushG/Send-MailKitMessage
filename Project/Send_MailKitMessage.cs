@@ -10,6 +10,7 @@ using MailKit.Net.Smtp;
 namespace Send_MailKitMessage
 {
     [Cmdlet(VerbsCommunications.Send, "MailKitMessage")]
+    [Alias("Send-PSMailMessage")]
     [OutputType(typeof(void))]
     public class SendMailKitMessage : PSCmdlet
     {
