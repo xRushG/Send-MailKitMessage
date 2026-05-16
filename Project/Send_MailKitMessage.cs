@@ -1,112 +1,198 @@
 ﻿using MimeKit;
-using System;
-using System.IO;
 using System.Management.Automation;
-using System.Reflection;
 using System.Web;
 using System.Security.Cryptography.X509Certificates;
+using MimeKit.Cryptography;
+using System;
+using System.Security.Authentication;
+using MailKit.Net.Smtp;
 
 namespace Send_MailKitMessage
 {
-    public class ModuleInitializer : IModuleAssemblyInitializer
-    {
-        public void OnImport()
-        {
-            //for some reason running Send-MailKitMessage in Windows PowerShell ALWAYS returned the following exception: "Could not load file or assembly 'System.Buffers, Version=4.0.2.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51' or one of its dependencies. The system cannot find the file specified."
-            //and I COULD NOT nail down what was causing it
-            //so per https://devblogs.microsoft.com/powershell/resolving-powershell-module-assembly-dependency-conflicts/ I am using an AssemblyResolve event handler to create a dynamic binding redirect so all calls to System.Buffers use the same assembly
-            AppDomain.CurrentDomain.AssemblyResolve += DependencyResolution.ResolveSystemBuffers;
-        }
-    }
-
-    internal static class DependencyResolution
-    {
-        private static readonly string CurrentLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-
-        public static Assembly ResolveSystemBuffers(object sender, ResolveEventArgs args)
-        {
-            //parse the assembly name
-            var assemblyName = new AssemblyName(args.Name);
-
-            //only handle the dependency we care about
-            if (!assemblyName.Name.Equals("System.Buffers"))
-            {
-                return null;
-            }
-
-            return Assembly.LoadFrom(Path.Combine(CurrentLocation, "System.Buffers.dll"));
-        }
-    }
-
-    [Cmdlet(VerbsCommunications.Send, "MailKitMessage")]    //I think the [CmdletBinding] piece is applicable to true PowerShell functions, not compiled cmdlets https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_functions_cmdletbindingattribute?view=powershell-7.1#long-description
+    [Cmdlet(VerbsCommunications.Send, "MailKitMessage")]
     [OutputType(typeof(void))]
-    public class Send_MailKitMessage : PSCmdlet
+    public class SendMailKitMessage : PSCmdlet
     {
-        [Parameter(
-            Mandatory = false)]
-        public SwitchParameter UseSecureConnectionIfAvailable { get; set; } = SwitchParameter.Present;  //default to present if no value is passed
+        #region powershell parameter
 
-        [Parameter(
-            Mandatory = false)]
-        public PSCredential Credential { get; set; }
-
-        [Parameter(
-            Mandatory = true)]
-        public string SMTPServer { get; set; }
-
-        [Parameter(
-            Mandatory = true)]
-        public int Port { get; set; }
-
-        [Parameter(
-            Mandatory = true)]
-        public string From { get; set; }
-
-        [Parameter(
-            Mandatory = true)]
-        public string[] RecipientList { get; set; }
-
-        [Parameter(
-            Mandatory = false)]
-        public string[] CCList { get; set; }
-
-        [Parameter(
-            Mandatory = false)]
-        public string[] BCCList { get; set; }
-
-        [Parameter(
-            Mandatory = false)]
-        public string Subject { get; set; }
-
-        [Parameter(
-            Mandatory = false)]
-        public string TextBody { get; set; }
-
-        [Parameter(
-            Mandatory = false)]
-        public string HTMLBody { get; set; }
-
-        [Parameter(
-            Mandatory = false)]
-        public string[] AttachmentList { get; set; }
-
+        /// <summary>
+        /// If specified, method will use a secure connection if available.
+        /// </summary>
         [Parameter(
             Mandatory = false,
-            HelpMessage = "Disables certificate revocation checks. This can be useful when occasional downtimes, network issues, or offline certificate authorities prevent checking the revocation status of certificates. " +
-                  "Be aware that disabling revocation checks may pose security risks."
+            HelpMessage = "Use this switch to enable a secure connection (SSL/TLS) if it is available."
+        )]
+        [Alias("UseSSLIfAvailable", "UseSecureConnectionIfAvailable")]
+        public SwitchParameter UseSSL { get; set; } = SwitchParameter.Present;
+
+        /// <summary>
+        /// The PSCredential object that contains the credentials to use for SMTP authentication.
+        /// </summary>
+        [Parameter(
+            Mandatory = false,
+            HelpMessage = "Provide the PSCredential object containing the username and password for SMTP authentication."
+        )]
+        public PSCredential Credential { get; set; }
+
+        /// <summary>
+        /// The address of the SMTP server to use for sending the email.
+        /// </summary>
+        [Parameter(
+            Mandatory = true,
+            HelpMessage = "Specify the SMTP server address (e.g., smtp.example.com) used for sending emails."
+        )]
+        public string SMTPServer { get; set; }
+
+        /// <summary>
+        /// The port number on the SMTP server to connect to.
+        /// </summary>
+        [Parameter(
+            Mandatory = true,
+            HelpMessage = "Specify the port number on the SMTP server (e.g., 25, 587, or 465)."
+        )]
+        public int Port { get; set; }
+
+        /// <summary>
+        /// The mailbox address from which the email will be sent.
+        /// </summary>
+        [Parameter(
+            Mandatory = true,
+            HelpMessage = "Specify the sender's mailbox address (e.g., sender@example.com)."
+        )]
+        public string From { get; set; }
+
+        /// <summary>
+        /// A list of recipient email addresses.
+        /// </summary>
+        [Parameter(
+            Mandatory = true,
+            HelpMessage = "Provide a list of recipient email addresses (e.g., recipient1@example.com, recipient2@example.com)."
+        )]
+        [Alias("ToList", "RecipientList")]
+        public string[] To { get; set; }
+
+        /// <summary>
+        /// A list of CC (carbon copy) recipient email addresses.
+        /// </summary>
+        [Parameter(
+            Mandatory = false,
+            HelpMessage = "Optionally provide a list of CC recipients' email addresses."
+        )]
+        [Alias("CCList", "CarbonCopyList")]
+        public string[] CC { get; set; }
+
+        /// <summary>
+        /// A list of BCC (blind carbon copy) recipient email addresses.
+        /// </summary>
+        [Parameter(
+            Mandatory = false,
+            HelpMessage = "Optionally provide a list of BCC recipients' email addresses."
+        )]
+        [Alias("BCCList", "BlindCarbonCopyList")]
+        public string[] BCC { get; set; }
+
+        /// <summary>
+        /// The mailbox address to which replies should be sent.
+        /// </summary>
+        [Parameter(
+            Mandatory = false,
+            HelpMessage = "Specify the reply-to email address (e.g., replyto@example.com)."
+        )]
+        public string[] ReplyTo { get; set; }
+
+        /// <summary>
+        /// The subject of the email.
+        /// </summary>
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Specify the subject line for the email."
+        )]
+
+        public string Subject { get; set; }
+
+        /// <summary>
+        /// The plain text body of the email.
+        /// </summary>
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Provide the plain text body content for the email."
+        )]
+        [Alias("Body")]
+        public string TextBody { get; set; }
+
+        /// <summary>
+        /// The HTML body of the email.
+        /// </summary>
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Provide HTML formatted content as the body of your email."
+        )]
+        [Alias("BodyAsHtml")]
+        public string HTMLBody { get; set; }
+
+        /// <summary>
+        /// An array of file paths for attachments to include in the email.
+        /// </summary>
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Optionally specify an array of file paths for attachments to include with your email."
+        )]
+        public string[] AttachmentList { get; set; }
+
+        /// <summary>
+        /// If specified, indicates that the email should be signed using S/MIME.
+        /// </summary>
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Use this switch to indicate that you want to sign your email using S/MIME."
+        )]
+        public SwitchParameter SignMail { get; set; }
+
+        /// < summary >
+        /// An X509Certificate2 object representing the S/MIME certificate used to sign or encrypt mail.
+        /// </ summary >
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Provide an X509Certificate2 object representing your S/MIME certificate used for signing or encrypting emails."
+        )]
+        [Alias("X509MailCertificate", "SMimeCert")]
+        public X509Certificate2 SMimeCertificate { get; set; }
+
+        /// < summary >
+        /// Specifies which digest algorithm should be used when signing an S/MIME message.
+        /// Defaults to Sha256 if not specified.
+        /// </ summary >
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Specify which digest algorithm to use when signing S/MIME messages. Default is Sha256 if not provided."
+        )]
+        public DigestAlgorithm SigningAlgorithm { get; set; } = DigestAlgorithm.Sha256;
+
+        /// < summary >
+        /// If specified, disables certificate revocation checking during SSL/TLS handshake.
+        /// < / summary >
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Use this switch to disable certificate revocation checking during SSL/TLS handshake."
         )]
         public SwitchParameter DisableCertificateRevocation { get; set; }
 
+        /// < summary >
+        /// If specified, allows custom handling of server certificate validation during SSL/TLS handshake.
+        /// < / summary >
         [Parameter(
             Mandatory = false,
-            HelpMessage = "Bypass server certificate validation entirely, accepting all certificates regardless of errors. " +
-                  "This is not recommended for production environments, as it exposes the system to potential security risks. " +
-                  "However, it can be useful for debugging scenarios or when working with self-signed certificates."
+            HelpMessage = "Use this switch for custom handling of server certificate validation during SSL/TLS handshake."
         )]
         public SwitchParameter ServerCertificateValidationCallback { get; set; }
 
+        /// < summary >
+        /// An array of X509Certificate2 objects representing client certificates used during SSL/TLS handshake.
+        /// < / summary >
         [Parameter(
-            Mandatory = false)]
+            Mandatory = false,
+            HelpMessage = "Provide an array of X509Certificate2 objects representing client certificates used during SSL/TLS handshake."
+        )]
         public X509Certificate2[] ClientCertificates { get; set; }
 
         [Parameter(
@@ -115,43 +201,61 @@ namespace Send_MailKitMessage
         )]
         public SwitchParameter WhatIf { get; set; }
 
+        #endregion
+
+        #region private parameter
+
+        /// <summary>
+        /// Represents an SMTP client for sending emails.
+        /// </summary>
+        MailKit.Net.Smtp.SmtpClient SmtpClient;
+
+        #endregion
+
         // This method gets called once for each cmdlet in the pipeline when the pipeline starts executing
         protected override void BeginProcessing()
         {
-            
+            base.BeginProcessing();
         }
 
         // This method will be called for each input received from the pipeline to this cmdlet; if no input is received, this method is not called
         protected override void ProcessRecord()
         {
+            base.ProcessRecord();
 
             MimeMessage Message = new MimeMessage();
             BodyBuilder Body = new BodyBuilder();
-            MailKit.Net.Smtp.SmtpClient Client = new MailKit.Net.Smtp.SmtpClient();
+            SmtpClient = new MailKit.Net.Smtp.SmtpClient();
 
             try
             {
-
                 //from
                 MailboxAddress from = ParseMailboxAddress(From);
                 Message.From.Add(from);
 
                 //to
-                InternetAddressList recipientList = ParseToInternetAddressList(RecipientList);
-                Message.To.AddRange(recipientList);
+                InternetAddressList to = ParseToInternetAddressList(To);
+                Message.To.AddRange(to);
 
                 //cc
-                if (CCList != null && CCList.Length > 0)
+                if (CC != null && CC.Length > 0)
                 {
-                    InternetAddressList ccList = ParseToInternetAddressList(CCList);
+                    InternetAddressList ccList = ParseToInternetAddressList(CC);
                     Message.Cc.AddRange(ccList);
                 }
 
                 //bcc
-                if (BCCList != null && BCCList.Length > 0)
+                if (BCC != null && BCC.Length > 0)
                 {
-                    InternetAddressList bcList = ParseToInternetAddressList(BCCList);
-                    Message.Bcc.AddRange(bcList);
+                    InternetAddressList bccList = ParseToInternetAddressList(BCC);
+                    Message.Bcc.AddRange(bccList);
+                }
+
+                // replyTo
+                if (ReplyTo != null && ReplyTo.Length > 0)
+                {
+                    InternetAddressList replyTo = ParseToInternetAddressList(ReplyTo);
+                    Message.ReplyTo.AddRange(replyTo);
                 }
 
                 //subject
@@ -169,7 +273,7 @@ namespace Send_MailKitMessage
                 //html body
                 if (!string.IsNullOrWhiteSpace(HTMLBody))
                 {
-                    Body.HtmlBody = HttpUtility.HtmlDecode(HTMLBody);    //decode html in case it was encoded along the way
+                    Body.HtmlBody = HttpUtility.HtmlDecode(HTMLBody);
                 }
 
                 //attachment(s)
@@ -184,19 +288,47 @@ namespace Send_MailKitMessage
                 //add bodybuilder to body
                 Message.Body = Body.ToMessageBody();
 
-                // Disables certificate revocation checks
+                //add digital signature
+                if (SignMail.IsPresent)
+                {
+                    // Certificate required
+                    if (SMimeCertificate == null)
+                    {
+                        throw new ArgumentException("The required signing certificate is not available. Please ensure that the certificate is properly configured.");
+                    }
+
+                    // Update to a more secure algorithm
+                    if (IsAlgorithmOutdated(SigningAlgorithm))
+                    {
+                        SigningAlgorithm = DigestAlgorithm.Sha256;
+                    }
+
+                    // Create a CmsSigner with the certificate
+                    var signer = new CmsSigner(SMimeCertificate)
+                    {
+                        DigestAlgorithm = SigningAlgorithm
+                    };
+
+                    // Sign the message
+                    using (var ctx = new TemporarySecureMimeContext())
+                    {
+                        Message.Body = MultipartSigned.Create(ctx, signer, Message.Body);
+                    }
+                }
+
+                // disable CheckCertificateRevocation
                 if (DisableCertificateRevocation.IsPresent)
                 {
-                    Client.CheckCertificateRevocation = false;
+                    SmtpClient.CheckCertificateRevocation = false;
                 }
 
-                // Bypass server certificate validation
+                //accept all certificates regardless of errors (not recommended in production)
                 if (ServerCertificateValidationCallback.IsPresent)
                 {
-                    Client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+                    SmtpClient.ServerCertificateValidationCallback = (s, c, h, e) => true;
                 }
 
-                // To authenticate the client to the server using a certificate
+                //add certificates if needed
                 if (ClientCertificates != null && ClientCertificates.Length > 0)
                 {
                     foreach (var cert in ClientCertificates)
@@ -206,56 +338,103 @@ namespace Send_MailKitMessage
                             throw new InvalidOperationException($"Certificate with thumbprint {cert.Thumbprint} does not have a private key.");
                         }
 
-                        Client.ClientCertificates.Add(cert);
+                        SmtpClient.ClientCertificates.Add(cert);
                     }
                 }
 
-                if (!WhatIf.IsPresent)
-                {
-                    // smtp Connect
-                    Client.Connect(SMTPServer, Port, (UseSecureConnectionIfAvailable.IsPresent 
-                        ? MailKit.Security.SecureSocketOptions.Auto 
-                        : MailKit.Security.SecureSocketOptions.None));
-
-                    // use smtp Authentication
-                    if (Credential != null)
-                    {
-                        Client.Authenticate(Credential.UserName, (System.Runtime.InteropServices.Marshal.PtrToStringAuto(System.Runtime.InteropServices.Marshal.SecureStringToBSTR(Credential.Password))));
-                    }
-
-                    // smtp send message
-                    Client.Send(Message);
-                } else
+                if (WhatIf.IsPresent)
                 {
                     Console.WriteLine($"WhatIf: Performing the operation \"Send Email\" on target SMTP server \"{SMTPServer}\" with the following details:\n" +
                       $"- Subject: {Subject}\n" +
                       $"- From: {From}\n" +
-                      $"- Recipients: {string.Join(", ", RecipientList)}\n" +
-                      $"- CC: {string.Join(", ", CCList ?? Array.Empty<string>())}\n" +
-                      $"- BCC: {string.Join(", ", BCCList ?? Array.Empty<string>())}\n" +
+                      $"- Recipients: {string.Join(", ", To)}\n" +
+                      $"- CC: {string.Join(", ", CC ?? Array.Empty<string>())}\n" +
+                      $"- BCC: {string.Join(", ", BCC ?? Array.Empty<string>())}\n" +
                       $"- Attachments: {string.Join(", ", AttachmentList ?? Array.Empty<string>())}\n" +
                       $"- SMTP Server: {SMTPServer}:{Port}");
                 }
+                else
+                {
+                    try
+                    {
+                        // Connect to SMTP server
+                        SmtpClient.Connect(SMTPServer, Port, UseSSL.IsPresent
+                            ? MailKit.Security.SecureSocketOptions.Auto
+                            : MailKit.Security.SecureSocketOptions.None);
+                    }
+                    catch (SmtpProtocolException smtpEx)
+                    {
+                        throw new InvalidOperationException("Failed to connect to the SMTP server. Please check the server address and port number.", smtpEx);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException("An unexpected error occurred while trying to connect to the SMTP server. Please verify your configuration.", ex);
+                    }
 
-            }
-            catch (Exception e)
-            {
-                
-                throw e;
+                    try
+                    {
+                        if (Credential != null)
+                        {
+                            IntPtr bstr = IntPtr.Zero;
+                            try
+                            {
+                                bstr = System.Runtime.InteropServices.Marshal.SecureStringToBSTR(Credential.Password);
+                                SmtpClient.Authenticate(Credential.UserName, System.Runtime.InteropServices.Marshal.PtrToStringAuto(bstr));
+                            }
+                            finally
+                            {
+                                if (bstr != IntPtr.Zero)
+                                    System.Runtime.InteropServices.Marshal.ZeroFreeBSTR(bstr);
+                            }
+                        }
+                    }
+                    catch (AuthenticationException authEx)
+                    {
+                        throw new InvalidOperationException("Authentication failed. Please check your username and password.", authEx);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException("An unexpected error occurred during authentication. Please ensure that all parameters are correctly set.", ex);
+                    }
+
+                    SmtpClient.Send(Message);
+                }
             }
             finally
             {
-                if (Client.IsConnected)
+                if (SmtpClient.IsConnected)
                 {
-                    Client.Disconnect(true);
+                    SmtpClient.Disconnect(true);
                 }
+                SmtpClient.Dispose();
+                SmtpClient = null;
+            }
+        }
+        protected override void EndProcessing()
+        {
+            base.EndProcessing();
+
+            if (SmtpClient?.IsConnected == true)
+            {
+                SmtpClient.Disconnect(true);
             }
         }
 
-        // This method will be called once at the end of pipeline execution; if no input is received, this method is not called
-        protected override void EndProcessing()
+        /// <summary>
+        /// Determines whether the specified digest algorithm is considered outdated or insecure.
+        /// </summary>
+        /// <param name="algorithm">The digest algorithm to check.</param>
+        /// <returns>
+        ///   <c>true</c> if the specified algorithm is outdated or insecure; otherwise, <c>false</c>.
+        /// </returns>
+        private static bool IsAlgorithmOutdated(DigestAlgorithm algorithm)
         {
-            
+            return algorithm == DigestAlgorithm.None ||
+                   algorithm == DigestAlgorithm.MD2 ||
+                   algorithm == DigestAlgorithm.MD4 ||
+                   algorithm == DigestAlgorithm.MD5 ||
+                   algorithm == DigestAlgorithm.Sha1 || // SHA-1 is considered weak
+                   algorithm == DigestAlgorithm.RipeMD160; // RIPEMD-160 is also considered less secure
         }
 
         /// <summary>
@@ -299,6 +478,9 @@ namespace Send_MailKitMessage
             {
                 foreach (var str in addressList)
                 {
+                    if (string.IsNullOrWhiteSpace(str))
+                        continue;
+
                     internetAddressList.Add(InternetAddress.Parse(str));
                 }
             }
@@ -316,15 +498,6 @@ namespace Send_MailKitMessage
 
 
             return internetAddressList;
-        }
-
-    }
-
-    public class ModuleCleanup : IModuleAssemblyCleanup
-    {
-        public void OnRemove(PSModuleInfo psModuleInfo)
-        {
-            AppDomain.CurrentDomain.AssemblyResolve -= DependencyResolution.ResolveSystemBuffers;
         }
     }
 }

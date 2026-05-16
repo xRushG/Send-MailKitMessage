@@ -15,7 +15,7 @@ RootModule = 'Send_MailKitMessage.dll'
 ModuleVersion = '3.2.0'
 
 # Supported PSEditions
-# CompatiblePSEditions = @()
+CompatiblePSEditions = @('Core')
 
 # ID used to uniquely identify this module
 GUID = '2facf1b9-cb30-43dd-9613-67b838d47832'
@@ -33,7 +33,7 @@ Copyright = '(c) Eric Austin. All rights reserved.'
 Description = 'A replacement for PowerShell''s obsolete Send-MailMessage implementing the Microsoft-recommended MailKit library.'
 
 # Minimum version of the PowerShell engine required by this module
-# PowerShellVersion = ''
+PowerShellVersion = '7.0'
 
 # Name of the PowerShell host required by this module
 # PowerShellHostName = ''
@@ -54,7 +54,7 @@ Description = 'A replacement for PowerShell''s obsolete Send-MailMessage impleme
 # RequiredModules = @()
 
 # Assemblies that must be loaded prior to importing this module
-RequiredAssemblies = 'BouncyCastle.Crypto.dll', 'MailKit.dll', 'MimeKit.dll'
+RequiredAssemblies = 'BouncyCastle.Cryptography.dll', 'MailKit.dll', 'MimeKit.dll'
 
 # Script files (.ps1) that are run in the caller's environment prior to importing this module.
 # ScriptsToProcess = @()

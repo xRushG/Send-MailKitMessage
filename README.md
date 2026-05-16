@@ -21,100 +21,131 @@ A replacement for PowerShell's [obsolete Send-MailMessage](https://docs.microsof
 ### Basic
 
 ```powershell
-using module Send-MailKitMessage;
+Import-Module Send-MailKitMessage;
 
 #SMTP server ([string], required)
 $SMTPServer = "SMTPServer";
 
 #port ([int], required)
-$Port = PortNumber;
+$Port = 587;
 
-#sender ([MimeKit.MailboxAddress] http://www.mimekit.net/docs/html/T_MimeKit_MailboxAddress.htm, required)
-$From = [MimeKit.MailboxAddress]"SenderEmailAddress";
+#sender ([string], required)
+$From = "sender@example.com";
 
-#recipient list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, required)
-$RecipientList = [MimeKit.InternetAddressList]::new();
-$RecipientList.Add([MimeKit.InternetAddress]"Recipient1EmailAddress");
+#recipient(s) ([string] or [string[]], required)
+#aliases: ToList, RecipientList
+$To = "recipient@example.com";
+# $To = @("recipient1@example.com", "recipient2@example.com");
 
 #subject ([string], optional)
-$Subject = [string]"Subject";
+$Subject = "Subject";
 
 #text body ([string], optional)
-$TextBody = [string]"TextBody";
+$TextBody = "TextBody";
 
 #send message
-Send-MailKitMessage -SMTPServer $SMTPServer -Port $Port -From $From -RecipientList $RecipientList -Subject $Subject -TextBody $TextBody;
-
+Send-MailKitMessage -SMTPServer $SMTPServer -Port $Port -From $From -To $To -Subject $Subject -TextBody $TextBody;
 ```
 
 ### All Parameters
 
 ```powershell
-using module Send-MailKitMessage;
+Import-Module Send-MailKitMessage;
 
-#use secure connection if available ([bool], optional)
-$UseSecureConnectionIfAvailable = $true;
+#use secure connection if available ([switch], optional, default: enabled)
+##aliases: UseSSLIfAvailable, UseSecureConnectionIfAvailable
+$UseSSL = $true;
 
 #authentication ([System.Management.Automation.PSCredential], optional)
-$Credential = [System.Management.Automation.PSCredential]::new("Username", (ConvertTo-SecureString -String "Password" -AsPlainText -Force));
+$Credential = Get-Credential;
 
 #SMTP server ([string], required)
-$SMTPServer = "SMTPServer";
+$SMTPServer = "smtp.example.com";
 
 #port ([int], required)
-$Port = PortNumber;
+$Port = 587;
 
-#sender ([MimeKit.MailboxAddress] http://www.mimekit.net/docs/html/T_MimeKit_MailboxAddress.htm, required)
-[string] $From = "SenderEmailAddress";
+#sender ([string], required)
+$From = "sender@example.com";
 
-#recipient list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, required)
-[string] $RecipientList = "RecipientEmailAddress"
-# [string[]] $RecipientList= @("Recipient1EmailAddress", "Recipient2EmailAddress"...)
+#recipient(s) ([string] or [string[]], required)
+##aliases: ToList, RecipientList
+$To = "recipient@example.com";
+# $To = @("recipient1@example.com", "recipient2@example.com");
 
-#cc list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, optional)
-[string] $CCList = "CCRecipientEmailAddress"
-# [string[]] $CCList= @("CCRecipient1EmailAddress", "CCRecipient2EmailAddress"...)
+#CC recipient(s) ([string] or [string[]], optional)
+##aliases: CCList, CarbonCopyList
+$CC = "cc@example.com";
+# $CC = @("cc1@example.com", "cc2@example.com");
 
-#bcc list ([MimeKit.InternetAddressList] http://www.mimekit.net/docs/html/T_MimeKit_InternetAddressList.htm, optional)
-[string] $BCCList = "BCCRecipientEmailAddress"
-# [string[]] $BCCList= @("BCCRecipient1EmailAddress", "BCCRecipient2EmailAddress"...)
+#BCC recipient(s) ([string] or [string[]], optional)
+##aliases: BCCList, BlindCarbonCopyList
+$BCC = "bcc@example.com";
+# $BCC = @("bcc1@example.com", "bcc2@example.com");
+
+#reply-to address(es) ([string] or [string[]], optional)
+$ReplyTo = "replyto@example.com";
+# $ReplyTo = @("replyto1@example.com", "replyto2@example.com");
 
 #subject ([string], optional)
-$Subject = [string]"Subject";
+$Subject = "Subject";
 
 #text body ([string], optional)
-$TextBody = [string]"TextBody";
+##aliases: Body
+$TextBody = "TextBody";
 
 #HTML body ([string], optional)
-$HTMLBody = [string]"HTMLBody";
+##aliases: BodyAsHtml
+$HTMLBody = "<b>HTMLBody</b>";
 
-#attachment list ([System.Collections.Generic.List[string]], optional)
-$AttachmentList = [System.Collections.Generic.List[string]]::new();
-$AttachmentList.Add("Attachment1FilePath");
+#attachment(s) ([string[]], optional)
+$AttachmentList = @("C:\path\to\file1.txt", "C:\path\to\file2.pdf");
 
-#Disable Certificate Revocation if available ([switch], optional)
-$DisableCertificateRevocation = $true
+#sign email with S/MIME ([switch], optional)
+$SignMail = $true;
 
-#Disable Server Certificate Validation Callback ([switch], optional)
-$ServerCertificateValidationCallback = $true
+#S/MIME certificate for signing or encrypting ([System.Security.Cryptography.X509Certificates.X509Certificate2], optional)
+##aliases: X509MailCertificate, SMimeCert
+$SMimeCertificate = Get-ChildItem Cert:\CurrentUser\My | Where-Object Thumbprint -eq "CERTTHUMBPRINT";
 
-#What If to simulates the operation without actually performing any actions ([switch], optional)
-$WhatIf = $true
+#digest algorithm for S/MIME signing ([MimeKit.Cryptography.DigestAlgorithm], optional, default: Sha256)
+#available values: Sha256, Sha384, Sha512, etc. (MD5, Sha1 and other weak algorithms are automatically upgraded to Sha256)
+$SigningAlgorithm = [MimeKit.Cryptography.DigestAlgorithm]::Sha256;
+
+#client certificates for SSL/TLS handshake ([System.Security.Cryptography.X509Certificates.X509Certificate2[]], optional)
+$ClientCertificates = @(Get-ChildItem Cert:\[...] | Where-Object Thumbprint -eq "CLIENTCERTTHUMBPRINT");
+
+#disable certificate revocation checking during SSL/TLS handshake ([switch], optional)
+$DisableCertificateRevocation = $true;
+
+#accept all server certificates regardless of validation errors ([switch], optional, not recommended in production)
+$ServerCertificateValidationCallback = $true;
+
+#simulate the operation without actually sending ([switch], optional)
+$WhatIf = $true;
 
 #splat parameters
 $Parameters = @{
-    "UseSecureConnectionIfAvailable" = $UseSecureConnectionIfAvailable    
-    "Credential" = $Credential
-    "SMTPServer" = $SMTPServer
-    "Port" = $Port
-    "From" = $From
-    "RecipientList" = $RecipientList
-    "CCList" = $CCList
-    "BCCList" = $BCCList
-    "Subject" = $Subject
-    "TextBody" = $TextBody
-    "HTMLBody" = $HTMLBody
-    "AttachmentList" = $AttachmentList
+    UseSSL                              = $UseSSL
+    Credential                          = $Credential
+    SMTPServer                          = $SMTPServer
+    Port                                = $Port
+    From                                = $From
+    To                                  = $To
+    CC                                  = $CC
+    BCC                                 = $BCC
+    ReplyTo                             = $ReplyTo
+    Subject                             = $Subject
+    TextBody                            = $TextBody
+    HTMLBody                            = $HTMLBody
+    AttachmentList                      = $AttachmentList
+    SignMail                            = $SignMail
+    SMimeCertificate                    = $SMimeCertificate
+    SigningAlgorithm                    = $SigningAlgorithm
+    ClientCertificates                  = $ClientCertificates
+    DisableCertificateRevocation        = $DisableCertificateRevocation
+    ServerCertificateValidationCallback = $ServerCertificateValidationCallback
+    WhatIf                              = $WhatIf
 };
 
 #send message
