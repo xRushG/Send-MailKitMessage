@@ -6,6 +6,7 @@ using MimeKit.Cryptography;
 using System;
 using System.Security.Authentication;
 using MailKit.Net.Smtp;
+using System.Threading;
 
 namespace Send_MailKitMessage
 {
@@ -112,6 +113,16 @@ namespace Send_MailKitMessage
         public string Subject { get; set; }
 
         /// <summary>
+        /// The priority of the email. Accepted values: Low, Normal, High.
+        /// </summary>
+        [Parameter(
+           Mandatory = false,
+           HelpMessage = "Specify the priority of the email: Low, Normal, or High."
+        )]
+        [ValidateSet("Low", "Normal", "High", IgnoreCase = true)]
+        public string Priority { get; set; }
+
+        /// <summary>
         /// The plain text body of the email.
         /// </summary>
         [Parameter(
@@ -138,7 +149,8 @@ namespace Send_MailKitMessage
            Mandatory = false,
            HelpMessage = "Optionally specify an array of file paths for attachments to include with your email."
         )]
-        public string[] AttachmentList { get; set; }
+        [Alias("Attachments", "AttachmentList")]
+        public string[] Attachment { get; set; }
 
         /// <summary>
         /// If specified, indicates that the email should be signed using S/MIME.
@@ -211,6 +223,8 @@ namespace Send_MailKitMessage
         /// </summary>
         MailKit.Net.Smtp.SmtpClient SmtpClient;
 
+        private CancellationTokenSource _cts;
+
         #endregion
 
         // This method gets called once for each cmdlet in the pipeline when the pipeline starts executing
@@ -227,6 +241,7 @@ namespace Send_MailKitMessage
             MimeMessage Message = new MimeMessage();
             BodyBuilder Body = new BodyBuilder();
             SmtpClient = new MailKit.Net.Smtp.SmtpClient();
+            _cts = new CancellationTokenSource();
 
             try
             {
@@ -265,6 +280,17 @@ namespace Send_MailKitMessage
                     Message.Subject = Subject;
                 }
 
+                //priority
+                if (!string.IsNullOrWhiteSpace(Priority))
+                {
+                    Message.Priority = Priority.ToLower() switch
+                    {
+                        "low"  => MessagePriority.NonUrgent,
+                        "high" => MessagePriority.Urgent,
+                        _      => MessagePriority.Normal
+                    };
+                }
+
                 //text body
                 if (!string.IsNullOrWhiteSpace(TextBody))
                 {
@@ -278,11 +304,11 @@ namespace Send_MailKitMessage
                 }
 
                 //attachment(s)
-                if (AttachmentList?.Length > 0)
+                if (Attachment?.Length > 0)
                 {
-                    foreach (string Attachment in AttachmentList)
+                    foreach (string file in Attachment)
                     {
-                        Body.Attachments.Add(Attachment);
+                        Body.Attachments.Add(file);
                     }
                 }
 
@@ -345,13 +371,13 @@ namespace Send_MailKitMessage
 
                 if (WhatIf.IsPresent)
                 {
-                    Console.WriteLine($"WhatIf: Performing the operation \"Send Email\" on target SMTP server \"{SMTPServer}\" with the following details:\n" +
+                    WriteObject($"WhatIf: Performing the operation \"Send Email\" on target SMTP server \"{SMTPServer}\" with the following details:\n" +
                       $"- Subject: {Subject}\n" +
                       $"- From: {From}\n" +
                       $"- Recipients: {string.Join(", ", To)}\n" +
                       $"- CC: {string.Join(", ", CC ?? Array.Empty<string>())}\n" +
                       $"- BCC: {string.Join(", ", BCC ?? Array.Empty<string>())}\n" +
-                      $"- Attachments: {string.Join(", ", AttachmentList ?? Array.Empty<string>())}\n" +
+                      $"- Attachments: {string.Join(", ", Attachment ?? Array.Empty<string>())}\n" +
                       $"- SMTP Server: {SMTPServer}:{Port}");
                 }
                 else
@@ -361,7 +387,7 @@ namespace Send_MailKitMessage
                         // Connect to SMTP server
                         SmtpClient.Connect(SMTPServer, Port, UseSSL.IsPresent
                             ? MailKit.Security.SecureSocketOptions.Auto
-                            : MailKit.Security.SecureSocketOptions.None);
+                            : MailKit.Security.SecureSocketOptions.None, _cts.Token);
                     }
                     catch (SmtpProtocolException smtpEx)
                     {
@@ -380,7 +406,7 @@ namespace Send_MailKitMessage
                             try
                             {
                                 bstr = System.Runtime.InteropServices.Marshal.SecureStringToBSTR(Credential.Password);
-                                SmtpClient.Authenticate(Credential.UserName, System.Runtime.InteropServices.Marshal.PtrToStringAuto(bstr));
+                                SmtpClient.Authenticate(Credential.UserName, System.Runtime.InteropServices.Marshal.PtrToStringAuto(bstr), _cts.Token);
                             }
                             finally
                             {
@@ -398,27 +424,44 @@ namespace Send_MailKitMessage
                         throw new InvalidOperationException("An unexpected error occurred during authentication. Please ensure that all parameters are correctly set.", ex);
                     }
 
-                    SmtpClient.Send(Message);
+                    SmtpClient.Send(Message, _cts.Token);
                 }
             }
             finally
             {
-                if (SmtpClient.IsConnected)
+                try
                 {
-                    SmtpClient.Disconnect(true);
+                    if (SmtpClient.IsConnected)
+                        SmtpClient.Disconnect(true);
                 }
-                SmtpClient.Dispose();
-                SmtpClient = null;
+                finally
+                {
+                    SmtpClient.Dispose();
+                    SmtpClient = null;
+                    _cts?.Dispose();
+                    _cts = null;
+                }
             }
         }
         protected override void EndProcessing()
         {
             base.EndProcessing();
 
-            if (SmtpClient?.IsConnected == true)
+            try
             {
-                SmtpClient.Disconnect(true);
+                if (SmtpClient?.IsConnected == true)
+                    SmtpClient.Disconnect(true);
             }
+            finally
+            {
+                SmtpClient?.Dispose();
+                SmtpClient = null;
+            }
+        }
+
+        protected override void StopProcessing()
+        {
+            _cts?.Cancel();
         }
 
         /// <summary>

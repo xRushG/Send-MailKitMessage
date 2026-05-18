@@ -2,11 +2,19 @@
 
 A replacement for PowerShell's [obsolete Send-MailMessage](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/send-mailmessage?view=powershell-7.1#description) implementing the [Microsoft-recommended MailKit library](https://docs.microsoft.com/en-us/dotnet/api/system.net.mail.smtpclient?view=net-5.0#remarks).
 
+- [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
     - [Basic](#basic)
     - [All Parameters](#all-parameters)
 - [Releases](#releases)
+
+# <a id="requirements" />Requirements
+
+- **PowerShell 7.5** or later — [Download](https://aka.ms/powershell)
+- **.NET 9 Runtime** — included with PowerShell 7.5 (no separate installation needed)
+
+> Older PowerShell versions (7.4 and below) ship with .NET 8 or earlier and will fail to load the module with a clear error message.
 
 # <a id="installation" />Installation  
 
@@ -90,6 +98,9 @@ $ReplyTo = "replyto@example.com";
 #subject ([string], optional)
 $Subject = "Subject";
 
+#email priority ([string], optional) — accepted values: Low, Normal, High
+$Priority = "Normal";
+
 #text body ([string], optional)
 ##aliases: Body
 $TextBody = "TextBody";
@@ -98,8 +109,9 @@ $TextBody = "TextBody";
 ##aliases: BodyAsHtml
 $HTMLBody = "<b>HTMLBody</b>";
 
-#attachment(s) ([string[]], optional)
-$AttachmentList = @("C:\path\to\file1.txt", "C:\path\to\file2.pdf");
+#attachment(s) ([string] or [string[]], optional)
+##aliases: Attachments, AttachmentList
+$Attachment = @("C:\path\to\file1.txt", "C:\path\to\file2.pdf");
 
 #sign email with S/MIME ([switch], optional)
 $SignMail = $true;
@@ -136,9 +148,10 @@ $Parameters = @{
     BCC                                 = $BCC
     ReplyTo                             = $ReplyTo
     Subject                             = $Subject
+    Priority                            = $Priority
     TextBody                            = $TextBody
     HTMLBody                            = $HTMLBody
-    AttachmentList                      = $AttachmentList
+    Attachment                          = $Attachment
     SignMail                            = $SignMail
     SMimeCertificate                    = $SMimeCertificate
     SigningAlgorithm                    = $SigningAlgorithm
@@ -153,6 +166,25 @@ Send-MailKitMessage @Parameters;
 ```
 
 # <a id="releases" />Releases
+
+### Fork Update: 18 Mai 2026 (3.2.2)
+
+New parameters:
+- Added `-Priority` — accepted values: `Low`, `Normal`, `High`
+- Renamed `-AttachmentList` → `-Attachment` (aliases: `Attachments`, `AttachmentList` kept for backwards compatibility)
+- Attachment now accepts `[string]` or `[string[]]`
+
+Bug fixes:
+- Fix resource leak: `finally` block now uses nested try-finally to guarantee `Dispose()` is called even if `Disconnect()` throws
+- `EndProcessing` now also calls `Dispose()` as a safety net
+- Replace `Console.WriteLine` with `WriteObject` in `-WhatIf` output
+- Fix foreach loop variable name collision in attachment handling
+
+Cancellation support:
+- Added `StopProcessing()` override — pressing Ctrl+C now cancels in-progress `Connect`, `Authenticate`, and `Send` operations via `CancellationToken`
+
+Runtime check:
+- Module now verifies .NET 9 is available at load time and throws a descriptive error if not
 
 ### Fork Update: 16 Mai 2026 (3.2.1)
 Added Send-PSMailMessage alias to provide a familiar alternative to the legacy Send-MailMessage function

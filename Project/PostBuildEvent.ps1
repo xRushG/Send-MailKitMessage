@@ -3,8 +3,9 @@ param (
 	[string]$vsBuildOption
 )
 
-$moduleManifestName = "Send-MailKitMessage.psd1"
-$ExampleFileName    = "Example-Send-MailKitMessage.ps1"
+$moduleManifestName  = "Send-MailKitMessage.psd1"
+$ExampleFileName     = "Example-Send-MailKitMessage.ps1"
+$RuntimeCheckFile    = "Requires-Runtime.ps1"
 $vsBinFolder        = "bin\$vsBuildOption\net9.0"
 
 $PostBuildBannerStarted = @"
@@ -38,6 +39,7 @@ Write-Host "Project Dir        : $vsProjektDir"                           -Foreg
 $projectRoot     = Split-Path $vsProjektDir
 $moduleManifest  = Join-Path $vsProjektDir $moduleManifestName
 $ExampleFile     = Join-Path $vsProjektDir $ExampleFileName
+$RuntimeCheck    = Join-Path $vsProjektDir $RuntimeCheckFile
 $buildOutputPath = Join-Path $vsProjektDir $vsBinFolder
 $moduleLocation  = Join-Path $projectRoot "Module"
 
@@ -68,6 +70,7 @@ try {
 
 	Copy-Item -Path $buildOutputPath  -Destination $moduleLocation -Recurse -ErrorAction Stop
 	Copy-Item -Path $moduleManifest   -Destination $moduleLocation -Force   -ErrorAction Stop
+	Copy-Item -Path $RuntimeCheck     -Destination $moduleLocation -Force   -ErrorAction Stop
 	Copy-Item -Path $ExampleFile      -Destination $moduleLocation -Force   -ErrorAction SilentlyContinue
 }
 catch {
